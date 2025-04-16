@@ -1,0 +1,133 @@
+import os, time, psutil, hydra, torch
+os.environ['OMP_NUM_THREADS'] = '20'
+os.environ['OPENBLAS_NUM_THREADS'] = '20'
+from hydra.utils import to_absolute_path
+from omegaconf import DictConfig, OmegaConf
+from torch.nn.parallel import DistributedDataParallel
+from torch.utils.tensorboard import SummaryWriter
+from modulus import Module
+from modulus.models.diffusion import UNet, EDMPrecondSR
+from modulus.distributed import DistributedManager
+from modulus.metrics.diffusion import RegressionLoss, ResLoss
+from modulus.launch.logging import PythonLogger, RankZeroLoggingWrapper
+from modulus.launch.utils import load_checkpoint, save_checkpoint
+from datasets.dataset import init_train_valid_datasets_from_config
+from helpers.train_helpers import (
+    set_patch_shape,
+    set_seed,
+    configure_cuda_for_consistent_precision,
+    compute_num_accumulation_rounds,
+    handle_and_clip_gradients,
+    is_time_for_periodic_task,
+)
+
+
+# Train the CorrDiff model using the configurations in "conf/config_training.yaml"
+@hydra.main(version_base="1.2", config_path="conf", config_name="config_training")
+def main(cfg: DictConfig) -> None:
+    # Initialize distributed environment for training
+    DistributedManager.initialize()
+    dist = DistributedManager()
+
+    # Initialize loggers
+    if dist.rank == 0:
+        writer = SummaryWriter(log_dir="tensorboard")
+    logger = PythonLogger("main")  # General python logger
+    logger0 = RankZeroLoggingWrapper(logger, dist)  # Rank 0 logger
+
+    # Resolve and parse configs
+    OmegaConf.resolve(cfg)
+    dataset_cfg = OmegaConf.to_container(cfg.dataset)  # TODO needs better handling
+    if hasattr(cfg, "validation_dataset"):
+        validation_dataset_cfg = OmegaConf.to_container(cfg.validation_dataset)
+    else:
+        validation_dataset_cfg = None
+    fp_optimizations = cfg.training.perf.fp_optimizations
+    fp16 = fp_optimizations == "fp16"
+    enable_amp = fp_optimizations.startswith("amp")
+    amp_dtype = torch.float16 if (fp_optimizations == "amp-fp16") else torch.bfloat16
+    logger.info(f"Saving the outputs in {os.getcwd()}")
+
+    # Set seeds and configure CUDA and cuDNN settings to ensure consistent precision
+    set_seed(dist.rank)
+    configure_cuda_for_consistent_precision()
+
+    # Instantiate the dataset
+    data_loader_kwargs = {
+        "pin_memory": True,
+        "num_workers": cfg.training.perf.dataloader_workers,
+        "prefetch_factor": 2,
+    }
+    (
+        dataset,
+        dataset_iterator,
+        validation_dataset,
+        validation_dataset_iterator,
+    ) = init_train_valid_datasets_from_config(
+        dataset_cfg,
+        data_loader_kwargs,
+        batch_size=cfg.training.hp.batch_size_per_gpu,
+        seed=0,
+        validation_dataset_cfg=validation_dataset_cfg,
+    )
+
+    # Parse image configuration & update model args
+    dataset_channels = len(dataset.input_channels())
+    img_in_channels = dataset_channels
+    img_shape = dataset.image_shape()
+    img_out_channels = len(dataset.output_channels())
+    if cfg.model.hr_mean_conditioning:
+        img_in_channels += img_out_channels
+
+    # Parse the patch shape
+    if cfg.model.name == "patched_diffusion":
+        patch_shape_x = cfg.training.hp.patch_shape_x
+        patch_shape_y = cfg.training.hp.patch_shape_y
+    else:
+        patch_shape_x = None
+        patch_shape_y = None
+    patch_shape = (patch_shape_y, patch_shape_x)
+    img_shape, patch_shape = set_patch_shape(img_shape, patch_shape)
+    if patch_shape != img_shape:
+        logger0.info("Patch-based training enabled")
+    else:
+        logger0.info("Patch-based training disabled")
+    # interpolate global channel if patch-based model is used
+    if img_shape[1] != patch_shape[1]:
+        img_in_channels += dataset_channels
+
+    if cfg.model.name not in ("regression", "diffusion", "patched_diffusion"):
+        raise ValueError("Invalid model")
+    model_args = {  # default parameters for all networks
+        "img_out_channels": img_out_channels,
+        # "img_resolution": list(img_shape),
+        "img_resolution": img_shape[0],
+        "use_fp16": fp16,
+    }
+    standard_model_cfgs = {  # default parameters for different network types
+        "regression": {
+            "img_channels": 4,
+            "N_grid_channels": 4,
+            "embedding_type": "zero",
+        },
+        "diffusion": {
+            "img_channels": img_out_channels,
+            "gridtype": "sinusoidal",
+            "N_grid_channels": 4,
+        },
+        "patched_diffusion": {
+            "img_channels": img_out_channels,
+            "gridtype": "learnable",
+            "N_grid_channels": 100,
+        },
+    }
+
+    model_args.update(standard_model_cfgs[cfg.model.name])
+    if hasattr(cfg.model, "model_args"):  # override defaults from config file
+        model_args.update(OmegaConf.to_container(cfg.model.model_args))
+
+
+
+
+
+
