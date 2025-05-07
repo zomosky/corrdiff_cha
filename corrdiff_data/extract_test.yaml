@@ -1,0 +1,48 @@
+# yaml --> extract data
+# extract data by month in .nc file
+
+
+#path: /Users/zmy/dataset/
+#lon: [90, 100]
+#lat: [40, 50]
+#lonax: [90, 100]
+#latax: [40, 50]
+#time: 20200101-20230101
+## time read day plus 1 (dp1)/ day plus 0 (dp0)
+#timeax: dp0
+#timechannel: [6, 7, 8, 9, 10, 11, 12]
+## single variable and its shape
+#single_variable: ['AOD550_DUST', 'AOD550_CLOUD', 'AOD550_BC']
+#single_variable_coor: ['time', 'lat', 'lon']
+#
+## level variable and its shape
+#level_variable: ['u_m', 'v_m', ]
+#level_variable_coor: ['time', 'level', 'lat', 'lon']
+#levelchannel: [] # channel of pressure level
+
+
+
+###test
+path: /Users/zmy/dataset/
+lon: 'longitude'
+lat: 'latitude'
+lonax: [70, 140]
+latax: [5, 60]
+time: '202409-202412' # between, not include (time)
+## time read day plus 1 (dp1)/ day plus 0 (dp0)
+## timechannel: [0] to [-1], index
+timechannel: [2, 9] #dp0
+# single variable and its shape
+single_variable: ['AOD550_DUST', 'AOD550_CLOUD', 'AOD550_BC']
+single_variable_coor: ['time', 'lat', 'lon']
+
+# level variable and its shape
+level_variable: ['u_m', 'v_m', ]
+level_variable_coor: ['time', 'level', 'lat', 'lon']
+levelchannel: [] # channel index of pressure level
+
+# save para
+savepath: './'
+
+
+

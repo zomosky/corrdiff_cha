@@ -1,0 +1,10 @@
+[18:47:27 - generate - INFO] [94mPatch-based training disabled[0m
+[18:47:29 - generate - INFO] [94mLoading residual network from "/home/sprixin/test/zhangmy/corrdiff/output_mod/cwb/EDMPrecondSR.0.560128.mdlus"...[0m
+[18:47:48 - generate - INFO] [94mLoading network from "/home/sprixin/test/zhangmy/corrdiff/output_mod/cwb/UNet.0.2000128.mdlus"...[0m
+[18:48:19 - generate - INFO] [94mGenerating images, saving results to /home/sprixin/test/zhangmy/corrdiff/output_mod/cwb/corrdiff_output.nc...[0m
+[18:50:15 - generate - INFO] [94mstarting index: 0[0m
+[18:50:16 - generate - INFO] [94mstarting index: 1[0m
+[18:50:16 - generate - INFO] [94mstarting index: 2[0m
+[18:50:17 - generate - INFO] [94mstarting index: 3[0m
+[18:50:18 - generate - INFO] [94mstarting index: 4[0m
+[18:50:52 - generate - INFO] [94mstarting index: 0[0m
